@@ -42,3 +42,7 @@ def test_nengo_version_check():
         reload(version)
     assert len(w) == 0
     sys.modules["nengo.version"] = saved
+
+
+def test_failure():
+    assert False
