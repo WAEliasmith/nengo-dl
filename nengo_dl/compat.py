@@ -169,6 +169,14 @@ if version.parse(tf.__version__) < version.parse("2.2.0rc0"):
 
         return tensor.experimental_ref()
 
+    def output_in_loss(keras_model):
+        """Check which model outputs are used in loss function."""
+
+        return [
+            not e.should_skip_target()
+            for e in getattr(keras_model, "_training_endpoints", [])
+        ]
+
 
 else:
 
@@ -205,6 +213,15 @@ else:
 
         network.Network._conform_to_reference_input = _conform_to_reference_input
 
+    def output_in_loss(keras_model):
+        """Check which model outputs are used in loss function."""
+
+        return [
+            keras_model.compiled_loss is None or n in keras_model.compiled_loss._losses
+            for n in keras_model.output_names
+        ]
+
+
 if version.parse(tf.__version__) < version.parse("2.1.0rc0"):
     from tensorflow.python.keras.layers import (
         BatchNormalization as BatchNormalizationV1,
@@ -240,7 +257,7 @@ if version.parse(nengo.__version__) < version.parse("3.1.0.dev0"):
         assert len(names) == len(neuron_op.states)
         return OrderedDict((n, s) for n, s in zip(names, neuron_op.states))
 
-    def neuron_step(neuron_op, dt, J, output, state):  # pragma: no cover (runs in TF)
+    def neuron_step(neuron_op, dt, J, output, state):
         """Call step_math instead of step."""
         neuron_op.neurons.step_math(dt, J, output, *state.values())
 
@@ -259,6 +276,6 @@ else:
         """Equivalent to neuron_op.state."""
         return neuron_op.state
 
-    def neuron_step(neuron_op, dt, J, output, state):  # pragma: no cover (runs in TF)
+    def neuron_step(neuron_op, dt, J, output, state):
         """Equivalent to neuron_op.step."""
         neuron_op.neurons.step(dt, J, output, **state)

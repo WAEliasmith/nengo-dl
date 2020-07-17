@@ -239,7 +239,11 @@ def test_train_recurrent(Simulator, truncation, use_loop, seed):
             # class ResetCallback(tf.keras.callbacks.Callback):
             #     def on_train_batch_end(self, batch, logs=None):
             #         if batch % truncation_steps == truncation_steps - 1:
-            #             sim.soft_reset()
+            #             sim.reset(
+            #                 include_probes=False,
+            #                 include_trainable=False,
+            #                 include_processes=False,
+            #             )
             #
             #     # def on_epoch_end(self, epoch, logs=None):
             #     #     sim.soft_reset()
@@ -249,7 +253,7 @@ def test_train_recurrent(Simulator, truncation, use_loop, seed):
             #     {p: np.reshape(y, (-1, truncation, y.shape[2]))},
             #     epochs=200,
             #     shuffle=False,
-            #     update_state=True,
+            #     stateful=True,
             #     callbacks=[ResetCallback()],
             #     verbose=2,
             # )
@@ -277,7 +281,7 @@ def test_train_recurrent(Simulator, truncation, use_loop, seed):
             sim.fit({inp: x}, {p: y}, epochs=200, verbose=0)
 
         loss = sim.evaluate({inp: x}, {p: y})["loss"]
-        assert loss < (0.006 if truncation else 0.0025)
+        assert loss < (0.007 if truncation else 0.0025)
 
 
 @pytest.mark.training
@@ -752,10 +756,7 @@ def test_tensorboard(Simulator, tmpdir):
         )
 
     # look up name of event file
-    if version.parse(tf.__version__) < version.parse("2.3.0rc0"):
-        event_dir = os.path.join(log_dir, "train")
-    else:
-        event_dir = log_dir
+    event_dir = os.path.join(log_dir, "train")
     event_file = [
         x
         for x in os.listdir(event_dir)
@@ -767,7 +768,7 @@ def test_tensorboard(Simulator, tmpdir):
 
     summaries = ["epoch_loss", "epoch_probe_loss", "epoch_probe_1_loss"]
     # metadata stuff in event file
-    meta_steps = 2 if version.parse(tf.__version__) < version.parse("2.3.0rc0") else 3
+    meta_steps = 2
     for i, record in enumerate(tf.data.TFRecordDataset(event_file)):
         event = event_pb2.Event.FromString(record.numpy())
 
@@ -1832,10 +1833,10 @@ def test_soft_reset(Simulator):
 
 def test_sim_close(Simulator):
     with Simulator(nengo.Network()) as sim:
-        assert sim.graph
+        assert sim.tensor_graph
 
-    with pytest.raises(SimulatorClosed, match="access Simulator.graph"):
-        assert sim.graph
+    with pytest.raises(SimulatorClosed, match="access Simulator.tensor_graph"):
+        assert sim.tensor_graph
 
     with pytest.raises(SimulatorClosed, match="simulator is closed"):
         with sim:

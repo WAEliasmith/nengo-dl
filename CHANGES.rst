@@ -18,7 +18,7 @@ Release history
    - Deprecated
    - Removed
 
-3.2.1 (unreleased)
+3.3.0 (unreleased)
 ------------------
 
 **Added**
@@ -27,6 +27,12 @@ Release history
 - Compatible with TensorFlow 2.3.0. (`#159`_)
 - Added support for ``nengo.Tanh``, ``nengo.RegularSpiking``,
   ``nengo.StochasticSpiking``, and ``nengo.PoissonSpiking`` neuron types. (`#159`_)
+- Added ``nengo_dl.configure_settings(learning_phase=True/False)`` configuration
+  option. This mimics the previous behaviour of
+  ``tf.keras.backend.learning_phase_scope`` (which was deprecated by TensorFlow). That
+  is, if you would like to override the default behaviour so that, e.g., ``sim.predict``
+  runs in training mode, set ``nengo_dl.configure_settings(learning_phase=True)``.
+  (`#163`_)
 
 **Changed**
 
@@ -34,6 +40,28 @@ Release history
   2.2 (due to a TensorFlow issue, see
   https://github.com/tensorflow/tensorflow/issues/39456). Loss/metric values
   will still be returned from the function as normal. (`#153`_)
+- NengoDL will now use TensorFlow's eager mode by default. The previous graph-mode
+  behaviour can be restored by calling ``tf.compat.v1.disable_eager_execution()``, but
+  we cannot guarantee that that behaviour will be supported in the future. (`#163`_)
+- NengoDL will now use TensorFlow's "control flow v2" by default. The previous
+  behaviour can be restored by calling ``tf.compat.v1.disable_control_flow_v2()``, but
+  we cannot guarantee that that behaviour will be supported in the future. (`#163`_)
+- NengoDL will now default to allowing TensorFlow's "soft placement" logic, meaning
+  that even if you specify an explicit device like ``"/gpu:0"``, TensorFlow may not
+  allocate an op to that device if there isn't a compatible implementation available.
+  The previous behaviour can be restored by calling
+  ``tf.config.set_soft_device_placement(False)``. (`#163`_)
+- Internal NengoDL ``OpBuilder`` classes now separate the "pre build" stage from
+  ``OpBuilder.__init__`` (so that the same ``OpBuilder`` class can be re-used across
+  multiple ``calls``, rather than instantiating a new ``OpBuilder`` each time). Note
+  that this has no impact on front-end users, this is
+  only relevant to anyone that has implemented a custom build class. The
+  logic that would previously have gone in ``OpBuilder.__init__`` should now go in
+  ``OpBuilder.build_pre``. In addition, the ``ops`` argument has been removed
+  from ``OpBuilder.build_pre``; that will be passed to ``OpBuilder.__init__`` (
+  and will be available in ``build_pre`` as ``self.ops``). Similarly, the ``ops`` and
+  ``config`` argument have been removed from ``build_post``, and can instead be
+  accessed through ``self.ops/config``. (`#163`_)
 
 **Fixed**
 
@@ -45,11 +73,16 @@ Release history
   occurs in Nengo>=3.1.0). (`#159`_)
 - More robust support for converting nested Keras models in TensorFlow 2.3. (`#161`_)
 
+**Removed**
+
+- Removed ``nengo_dl.utils.print_op`` (use ``tf.print`` instead). (`#163`_)
+
 .. _#149: https://github.com/nengo/nengo-dl/pull/149
 .. _#151: https://github.com/nengo/nengo-dl/pull/151
 .. _#153: https://github.com/nengo/nengo-dl/pull/153
 .. _#159: https://github.com/nengo/nengo-dl/pull/159
 .. _#161: https://github.com/nengo/nengo-dl/pull/161
+.. _#163: https://github.com/nengo/nengo-dl/pull/163
 
 3.2.0 (April 2, 2020)
 ---------------------

@@ -52,9 +52,7 @@ def with_self(wrapped, instance, args, kwargs):
 
     keras_dtype = tf.keras.backend.floatx()
     tf.keras.backend.set_floatx(instance.tensor_graph.dtype)
-    with instance.graph.as_default(), instance.graph.device(
-        instance.tensor_graph.device
-    ):
+    with tf.device(instance.tensor_graph.device):
         output = wrapped(*args, **kwargs)
     tf.keras.backend.set_floatx(keras_dtype)
 
@@ -531,7 +529,6 @@ class Simulator:  # pylint: disable=too-many-public-methods
         with ProgressBar(
             "Constructing graph", "Construction", max_value=None
         ) as progress:
-            self.graph = tf.Graph()
             self._build_keras(progress)
 
         # initialize sim attributes
@@ -552,18 +549,10 @@ class Simulator:  # pylint: disable=too-many-public-methods
             Progress bar for construction stage.
         """
 
-        tf.config.set_soft_device_placement(False)
-
         self.node_inputs, n_steps = self.tensor_graph.build_inputs()
         inputs = list(self.node_inputs.values()) + [n_steps]
 
-        outputs = self.tensor_graph(
-            inputs,
-            stateful=self.stateful,
-            # if the global learning phase is set, use that
-            training=compat.global_learning_phase(),
-            progress=progress,
-        )
+        outputs = self.tensor_graph(inputs, stateful=self.stateful, progress=progress)
 
         self.keras_model = tf.keras.Model(
             inputs=inputs, outputs=outputs, name="keras_model",
@@ -613,14 +602,16 @@ class Simulator:  # pylint: disable=too-many-public-methods
         """
 
         if self.stateful:
-            tf.keras.backend.batch_get_value(
-                [var.initializer for var in self.tensor_graph.saved_state.values()]
-            )
+            for key, var in self.tensor_graph.saved_state.items():
+                var.assign(
+                    self.tensor_graph.initial_values[key](var.shape, dtype=var.dtype)
+                )
 
         if include_trainable:
-            tf.keras.backend.batch_get_value(
-                [var.initializer for var in self.tensor_graph.base_params.values()]
-            )
+            for key, var in self.tensor_graph.base_params.items():
+                var.assign(
+                    self.tensor_graph.initial_values[key](var.shape, dtype=var.dtype)
+                )
 
         if include_probes:
             for p in self.model.probes:
@@ -965,7 +956,8 @@ class Simulator:  # pylint: disable=too-many-public-methods
                 "Batch size is determined statically via Simulator.minibatch_size; "
                 "ignoring value passed to `%s`" % func_type
             )
-            kwargs["batch_size"] = None
+        if "on_batch" not in func_type:
+            kwargs["batch_size"] = self.minibatch_size
 
         # TODO: apply standardize/generate/check data to generator somehow
         # maybe move it into a callback where the generated data is available?
@@ -1010,11 +1002,10 @@ class Simulator:  # pylint: disable=too-many-public-methods
         if not stateful:
             target_probes = [
                 p
-                for p, e in zip(
-                    self.model.probes,
-                    getattr(self.keras_model, "_training_endpoints", []),
+                for p, l in zip(
+                    self.model.probes, compat.output_in_loss(self.keras_model)
                 )
-                if not e.should_skip_target()
+                if l
             ]
 
             synapses = [
@@ -1596,8 +1587,12 @@ class Simulator:  # pylint: disable=too-many-public-methods
 
             if self.stateful:
                 # reset state
-                for var in self.tensor_graph.saved_state.values():
-                    var.assign(var.initial_value)
+                for key, var in self.tensor_graph.saved_state.items():
+                    var.assign(
+                        self.tensor_graph.initial_values[key](
+                            var.shape, dtype=var.dtype
+                        )
+                    )
 
             # drop steps_run
             out = out[:-1]
@@ -1613,11 +1608,9 @@ class Simulator:  # pylint: disable=too-many-public-methods
 
         grads = dict()
         for output in outputs:
-            # TODO: switch to eager evaluation
-            with tf.compat.v1.keras.backend.get_session().as_default():
-                analytic, numeric = tf.test.compute_gradient(
-                    partial(arg_func, output=output), inputs
-                )
+            analytic, numeric = tf.test.compute_gradient(
+                partial(arg_func, output=output), inputs
+            )
             grads[output] = dict()
             grads[output]["analytic"] = analytic
             grads[output]["numeric"] = numeric
@@ -1680,8 +1673,7 @@ class Simulator:  # pylint: disable=too-many-public-methods
         if not self.closed:
             self.keras_model = None
             self.tensor_graph = None
-            self.graph = None
-            self._closed_attrs = ["keras_model", "tensor_graph", "graph"]
+            self._closed_attrs = ["keras_model", "tensor_graph"]
 
             self.closed = True
 
@@ -1755,7 +1747,7 @@ class Simulator:  # pylint: disable=too-many-public-methods
             if len(data) != len(objects):
                 warnings.warn(
                     "Number of data values (%d) does not match number of %ss (%d); "
-                    "it is recommended to use an explicit input dictionary in this "
+                    "we'd recommend using an explicit input dictionary in this "
                     "case, so that the assignment of data to objects is unambiguous."
                     % (len(data), type(objects[0]).__name__, len(objects))
                 )
@@ -2031,11 +2023,9 @@ class Simulator:  # pylint: disable=too-many-public-methods
 
     @with_self
     def _update_steps(self):
-        if not hasattr(self, "_step_tensor"):
-            # cache this so we aren't adding new ops every time we call this function
-            self._step_tensor = self.tensor_graph.get_tensor(self.model.step)
-
-        self._n_steps = tf.keras.backend.get_value(self._step_tensor).item()
+        self._n_steps = tf.keras.backend.get_value(
+            self.tensor_graph.get_tensor(self.model.step)
+        ).item()
         self._time = self._n_steps * self.dt
 
     @property
@@ -2064,10 +2054,7 @@ class Simulator:  # pylint: disable=too-many-public-methods
 
     @require_open
     def __enter__(self):
-        self._graph_context = self.graph.as_default()
-        self._device_context = self.graph.device(self.tensor_graph.device)
-
-        self._graph_context.__enter__()
+        self._device_context = tf.device(self.tensor_graph.device)
         self._device_context.__enter__()
 
         self._keras_dtype = tf.keras.backend.floatx()
@@ -2080,7 +2067,6 @@ class Simulator:  # pylint: disable=too-many-public-methods
         tf.keras.backend.set_floatx(self._keras_dtype)
 
         self._device_context.__exit__(*args)
-        self._graph_context.__exit__(*args)
 
         self.close()
 
