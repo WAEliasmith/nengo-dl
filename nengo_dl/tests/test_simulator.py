@@ -30,6 +30,8 @@ def test_persistent_state(Simulator, seed):
     """Make sure that state is preserved between runs."""
 
     with nengo.Network(seed=seed) as net:
+        configure_settings(dtype="float64")
+
         inp = nengo.Node(np.sin)
         ens = nengo.Ensemble(1000, 1)
         nengo.Connection(inp, ens)
