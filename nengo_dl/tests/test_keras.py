@@ -380,11 +380,15 @@ def test_multi_input_warning(Simulator):
 
         with pytest.warns(None) as recwarn:
             sim.predict([np.zeros((1, 10, 1))] * 2)
-        assert not recwarn
+        assert not any(
+            "does not match number of Nodes" in str(w.message) for w in recwarn
+        )
 
         with pytest.warns(None) as recwarn:
             sim.predict({inp1: np.zeros((1, 10, 1))})
-        assert not recwarn
+        assert not any(
+            "does not match number of Nodes" in str(w.message) for w in recwarn
+        )
 
         sim.compile(optimizer=tf.optimizers.SGD(0), loss=tf.losses.mse)
         with pytest.warns(UserWarning, match="does not match number of Nodes"):
