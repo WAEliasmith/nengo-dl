@@ -32,6 +32,10 @@ def pytest_runtest_setup(item):
     ):
         pytest.skip("Skipping performance test")
 
+    if item.config.getvalue("--graph-mode"):
+        tf.compat.v1.disable_eager_execution()
+        tf.compat.v1.disable_control_flow_v2()
+
     tf.keras.backend.clear_session()
 
 
@@ -66,6 +70,12 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="Run performance tests",
+    )
+    parser.addoption(
+        "--graph-mode",
+        action="store_true",
+        default=False,
+        help="Run tests in graph (not eager) mode",
     )
 
 

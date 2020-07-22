@@ -386,6 +386,13 @@ class TensorGraph(tf.keras.layers.Layer):
 
             tf.keras.backend.batch_set_value(zip(weight_sets, weight_vals))
 
+        if not tf.executing_eagerly():
+            # initialize state variables (need to do this manually because we're not
+            # adding them to self.weights)
+            tf.keras.backend.batch_get_value(
+                [var.initializer for var in self.saved_state.values()]
+            )
+
     @tf.autograph.experimental.do_not_convert
     def call(self, inputs, training=None, progress=None, stateful=False):
         """
@@ -495,12 +502,11 @@ class TensorGraph(tf.keras.layers.Layer):
         # number of steps, even if there are no output probes
         outputs = list(probe_arrays.values()) + [steps_run]
 
-        n_state = 0
+        updates = []
         if stateful:
             # update saved state
             for var, val in zip(self.saved_state.values(), final_internal_state):
-                var.assign(val)
-                n_state += 1
+                updates.append(var.assign(val))
 
         # if any of the base params have changed (due to online learning rules) then we
         # also need to assign those back to the original variable (so that their
@@ -513,10 +519,13 @@ class TensorGraph(tf.keras.layers.Layer):
                 minibatched = self.base_arrays_init["trainable"][key][-1]
 
             if minibatched:
-                var.assign(val)
-                n_state += 1
+                updates.append(var.assign(val))
 
-        logger.info("Number of state updates: %d", n_state)
+        logger.info("Number of state updates: %d", len(updates))
+
+        if not tf.executing_eagerly() and len(updates) > 0:
+            with tf.control_dependencies(updates):
+                outputs = [tf.identity(x) for x in outputs]
 
         return outputs
 

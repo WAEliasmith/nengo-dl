@@ -3,6 +3,7 @@ Build classes for Nengo process operators.
 """
 
 from collections import OrderedDict
+import contextlib
 import logging
 
 from nengo.builder.processes import SimProcess
@@ -48,6 +49,8 @@ class GenericProcessBuilder(OpBuilder):
         ]
         self.mode = "inc" if self.ops[0].mode == "inc" else "update"
 
+        self.prev_result = []
+
         # `merged_func` calls the step function for each process and
         # combines the result
         def merged_func(time, *input_state):
@@ -92,12 +95,22 @@ class GenericProcessBuilder(OpBuilder):
         input = [] if self.input_data is None else [signals.gather(self.input_data)]
         state = [signals.gather(s) for s in self.state_data]
 
-        result = tf.numpy_function(
-            self.merged_func,
-            time + input + state,
-            [self.output_data.dtype] + [s.dtype for s in self.state_data],
-            name=self.merged_func.__name__,
-        )
+        if tf.executing_eagerly():
+            # noop
+            control_deps = contextlib.suppress()
+        else:
+            # we need to make sure that the previous call to this function
+            # has completed before the next starts, since we don't know that the
+            # functions are thread saf
+            control_deps = tf.control_dependencies(self.prev_result)
+
+        with control_deps:
+            result = tf.numpy_function(
+                self.merged_func,
+                time + input + state,
+                [self.output_data.dtype] + [s.dtype for s in self.state_data],
+                name=self.merged_func.__name__,
+            )
 
         # TensorFlow will automatically squeeze length-1 outputs (if there is
         # no state), which we don't want
@@ -105,6 +118,8 @@ class GenericProcessBuilder(OpBuilder):
 
         output = result[0]
         state = result[1:]
+
+        self.prev_result = [output]
 
         output.set_shape(self.output_data.full_shape)
         signals.scatter(self.output_data, output, mode=self.mode)

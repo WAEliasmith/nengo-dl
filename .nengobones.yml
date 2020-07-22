@@ -216,9 +216,9 @@ travis_yml:
       env:
         TF_VERSION: tensorflow-gpu
         GPU_NUM: 0
-    - test_args: --unroll-simulation 5 --simulator-only
-    - test_args: --dtype float64 --simulator-only
+    - test_args: --unroll-simulation 5 --dtype float64 --simulator-only
     - test_args: --inference-only --simulator-only
+    - test_args: --graph-mode --simulator-only
   pypi_user: drasmuss
   deploy_dists:
     - sdist

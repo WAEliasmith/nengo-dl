@@ -5,6 +5,7 @@ a model.
 """
 
 import collections
+import contextlib
 import copy
 from functools import partial
 import logging
@@ -602,17 +603,29 @@ class Simulator:  # pylint: disable=too-many-public-methods
         """
 
         if self.stateful:
-            for key, var in self.tensor_graph.saved_state.items():
-                var.assign(
-                    self.tensor_graph.initial_values[key](var.shape, dtype=var.dtype)
+            if tf.executing_eagerly():
+                for key, var in self.tensor_graph.saved_state.items():
+                    var.assign(
+                        self.tensor_graph.initial_values[key](
+                            var.shape, dtype=var.dtype
+                        )
+                    )
+            else:
+                tf.keras.backend.batch_get_value(
+                    [var.initializer for var in self.tensor_graph.saved_state.values()]
                 )
-
         if include_trainable:
-            for key, var in self.tensor_graph.base_params.items():
-                var.assign(
-                    self.tensor_graph.initial_values[key](var.shape, dtype=var.dtype)
+            if tf.executing_eagerly():
+                for key, var in self.tensor_graph.base_params.items():
+                    var.assign(
+                        self.tensor_graph.initial_values[key](
+                            var.shape, dtype=var.dtype
+                        )
+                    )
+            else:
+                tf.keras.backend.batch_get_value(
+                    [var.initializer for var in self.tensor_graph.base_params.values()]
                 )
-
         if include_probes:
             for p in self.model.probes:
                 self.model.params[p] = []
@@ -1605,11 +1618,18 @@ class Simulator:  # pylint: disable=too-many-public-methods
             include_probes=False, include_trainable=False, include_processes=False
         )
 
+        if tf.executing_eagerly():
+            # noop
+            ctx = contextlib.suppress()
+        else:
+            ctx = tf.compat.v1.keras.backend.get_session().as_default()
+
         grads = dict()
         for output in outputs:
-            analytic, numeric = tf.test.compute_gradient(
-                partial(arg_func, output=output), inputs
-            )
+            with ctx:
+                analytic, numeric = tf.test.compute_gradient(
+                    partial(arg_func, output=output), inputs
+                )
             grads[output] = dict()
             grads[output]["analytic"] = analytic
             grads[output]["numeric"] = numeric

@@ -69,13 +69,13 @@ jobs:
       SCRIPT="remote-examples"
   -
     env:
-      TEST_ARGS="--unroll-simulation 5 --simulator-only"
-  -
-    env:
-      TEST_ARGS="--dtype float64 --simulator-only"
+      TEST_ARGS="--unroll-simulation 5 --dtype float64 --simulator-only"
   -
     env:
       TEST_ARGS="--inference-only --simulator-only"
+  -
+    env:
+      TEST_ARGS="--graph-mode --simulator-only"
   - stage: deploy
     if: branch =~ ^release-candidate-* OR tag =~ ^v[0-9]*
     env: SCRIPT="deploy"
