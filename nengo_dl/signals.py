@@ -314,7 +314,7 @@ class SignalDict(Mapping):
             Overwrite/add the data at ``dst`` with ``val``
         """
 
-        logger.debug("scatter")
+        logger.debug("SCATTER")
         logger.debug("values %s", val)
         logger.debug("dst %s", dst)
         logger.debug("slices %s", dst.slices)
@@ -367,9 +367,9 @@ class SignalDict(Mapping):
                 result = tf.tensor_scatter_nd_update(var, dst.tf_indices_nd, val)
             self.write_types["scatter_update"] += 1
 
-        self.bases[dst.key] = result
+        logger.debug("result %s", result)
 
-        logger.debug("new dst base %s", self.bases[dst.key])
+        self.bases[dst.key] = result
 
     def gather(self, src, force_copy=False):
         """
@@ -391,7 +391,7 @@ class SignalDict(Mapping):
             base array
         """
 
-        logger.debug("gather")
+        logger.debug("GATHER")
         logger.debug("src %s", src)
         logger.debug("slices %s", src.slices)
         logger.debug("src base %s", self.bases[src.key])
@@ -412,9 +412,12 @@ class SignalDict(Mapping):
             result = tf.strided_slice(var, *src.tf_slice)
             self.read_types["strided_slice"] += 1
 
+        logger.debug("result %s", result)
+
         # reshape the data according to the shape set in `src`, if there is
         # one, otherwise keep the shape of the base array
         if result.shape != src.full_shape:
+            logger.debug("reshaping to %s", src.full_shape)
             result = tf.reshape(result, src.tf_shape)
 
         return result
