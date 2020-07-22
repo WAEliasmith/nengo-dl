@@ -141,7 +141,7 @@ class ResetBuilder(OpBuilder):
 
     @staticmethod
     def mergeable(x, y):
-        return False
+        return True
 
 
 @Builder.register(Copy)
@@ -179,7 +179,7 @@ class CopyBuilder(OpBuilder):
 
     @staticmethod
     def mergeable(x, y):
-        return False
+        return True
 
 
 @Builder.register(ElementwiseInc)
